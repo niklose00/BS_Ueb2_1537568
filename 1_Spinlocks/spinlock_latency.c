@@ -42,8 +42,6 @@ void *sender(void *arg) {
         lock(&spinlock);
         clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2]); // Start time
         shared_data = i; // Simulate data communication
-        printf("Sender: Iteration %d, Start: %ld.%09ld\n",
-               i, timing[i * 2].tv_sec, timing[i * 2].tv_nsec);
         unlock(&spinlock);
     }
     return NULL;
@@ -57,8 +55,6 @@ void *receiver(void *arg) {
         }
         clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2 + 1]); // End time
         int data = shared_data; // Simulate data retrieval
-        printf("Receiver: Iteration %d, End: %ld.%09ld\n",
-               i, timing[i * 2 + 1].tv_sec, timing[i * 2 + 1].tv_nsec);
         unlock(&spinlock);
     }
     return NULL;
@@ -70,8 +66,8 @@ int main() {
     long latencies[NUM_ITERATIONS];
 
     // Create threads
-    pthread_create(&receiver_thread, NULL, receiver, timing);
     pthread_create(&sender_thread, NULL, sender, timing);
+    pthread_create(&receiver_thread, NULL, receiver, timing);
 
     // Wait for threads to finish
     pthread_join(sender_thread, NULL);
@@ -95,6 +91,8 @@ int main() {
     long max_latency = latencies[0];
     for (int i = 0; i < NUM_ITERATIONS; i++) {
         total_latency += latencies[i];
+        printf("total: %ld\n", total_latency);
+
         if (latencies[i] < min_latency) min_latency = latencies[i];
         if (latencies[i] > max_latency) max_latency = latencies[i];
     }

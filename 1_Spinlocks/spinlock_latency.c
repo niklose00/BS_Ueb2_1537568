@@ -5,13 +5,17 @@
 #include <time.h>
 #include <math.h>
 
-#define NUM_ITERATIONS 10
+#define NUM_ITERATIONS 1000
 
 // Define the Spinlock
 volatile atomic_flag spinlock = ATOMIC_FLAG_INIT;
 
 // Shared data
 volatile int shared_data = 0;
+
+//Gegen race condition
+volatile int ready_flag = 0; // 0 = Sender noch nicht fertig, 1 = Sender fertig
+
 
 // Timing function
 long calculate_elapsed_time(struct timespec start, struct timespec end) {
@@ -38,27 +42,67 @@ void unlock(volatile atomic_flag *lock) {
 // Thread functions
 void *sender(void *arg) {
     struct timespec *timing = (struct timespec *)arg;
+    struct timespec timeout;
+    
     for (int i = 0; i < NUM_ITERATIONS; i++) {
+        // Sperre den kritischen Abschnitt
         lock(&spinlock);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2]); // Start time
-        shared_data = i; // Simulate data communication
+        
+        // Erfasse die Startzeit
+        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2]);
+        
+        // Simuliere die Datenkommunikation
+        shared_data = i;
+        
+        // Entsperre den kritischen Abschnitt
         unlock(&spinlock);
+        
+        // Signalisiere dem Empfänger, dass der Sender bereit ist
+        ready_flag = 1;
+
+        // Timeout hinzufügen: Warte eine definierte Zeitspanne
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_sec += 1; // 1 Sekunde Timeout als Beispiel
+
+        while (ready_flag == 1) {
+            struct timespec now;
+            clock_gettime(CLOCK_REALTIME, &now);
+
+            // Überprüfe, ob das Timeout erreicht ist
+            if ((now.tv_sec > timeout.tv_sec) ||
+                (now.tv_sec == timeout.tv_sec && now.tv_nsec > timeout.tv_nsec)) {
+                fprintf(stderr, "Timeout: Empfänger hat das Signal nicht rechtzeitig verarbeitet.\n");
+                break;
+            }
+        }
     }
+
     return NULL;
 }
+
+
 
 void *receiver(void *arg) {
     struct timespec *timing = (struct timespec *)arg;
     for (int i = 0; i < NUM_ITERATIONS; i++) {
+        while (ready_flag == 0) {
+            // Wait for sender to signal readiness
+            printf("Receiver: not ready yet\n");
+        }
+
         while (atomic_flag_test_and_set(&spinlock)) {
             // Busy waiting
         }
         clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2 + 1]); // End time
         int data = shared_data; // Simulate data retrieval
         unlock(&spinlock);
+        
+        // Reset ready_flag for next iteration
+        ready_flag = 0;
     }
     return NULL;
 }
+
 
 int main() {
     pthread_t sender_thread, receiver_thread;
@@ -73,11 +117,12 @@ int main() {
     pthread_join(sender_thread, NULL);
     pthread_join(receiver_thread, NULL);
 
-    // Debug: Print timing values
+    // Debug: Print timing values with differences
     for (int i = 0; i < NUM_ITERATIONS; i++) {
-        printf("Iteration %d: Start: %ld.%09ld, End: %ld.%09ld\n",
+        long diff = calculate_elapsed_time(timing[i * 2], timing[i * 2 + 1]);
+        printf("Iteration %d: Start: %ld.%09ld, End: %ld.%09ld, Diff: %ld ns\n",
                i, timing[i * 2].tv_sec, timing[i * 2].tv_nsec,
-               timing[i * 2 + 1].tv_sec, timing[i * 2 + 1].tv_nsec);
+               timing[i * 2 + 1].tv_sec, timing[i * 2 + 1].tv_nsec, diff);
     }
 
     // Calculate latencies
@@ -91,7 +136,7 @@ int main() {
     long max_latency = latencies[0];
     for (int i = 0; i < NUM_ITERATIONS; i++) {
         total_latency += latencies[i];
-        printf("total: %ld\n", total_latency);
+        // printf("total: %ld\n", total_latency);
 
         if (latencies[i] < min_latency) min_latency = latencies[i];
         if (latencies[i] > max_latency) max_latency = latencies[i];

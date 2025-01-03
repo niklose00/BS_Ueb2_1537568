@@ -8,7 +8,9 @@
 #define NUM_ITERATIONS 1000
 
 // Define the Spinlock
-volatile atomic_flag spinlock = ATOMIC_FLAG_INIT;
+volatile atomic_flag spinlock_data = ATOMIC_FLAG_INIT; // Für geteilte Daten
+volatile atomic_flag spinlock_sync = ATOMIC_FLAG_INIT; // Für Synchronisation
+
 
 // Shared data
 volatile int shared_data = 0;
@@ -42,39 +44,19 @@ void unlock(volatile atomic_flag *lock) {
 // Thread functions
 void *sender(void *arg) {
     struct timespec *timing = (struct timespec *)arg;
-    struct timespec timeout;
     
     for (int i = 0; i < NUM_ITERATIONS; i++) {
-        // Sperre den kritischen Abschnitt
-        lock(&spinlock);
-        
-        // Erfasse die Startzeit
-        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2]);
-        
-        // Simuliere die Datenkommunikation
-        shared_data = i;
-        
-        // Entsperre den kritischen Abschnitt
-        unlock(&spinlock);
-        
-        // Signalisiere dem Empfänger, dass der Sender bereit ist
-        ready_flag = 1;
+        // Sperre Synchronisation
+        lock(&spinlock_sync);
 
-        // Timeout hinzufügen: Warte eine definierte Zeitspanne
-        clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_sec += 1; // 1 Sekunde Timeout als Beispiel
+        // Sperre Datenzugriff
+        lock(&spinlock_data);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2]); // Startzeit
+        shared_data = i; // Simuliere Datenübertragung
+        unlock(&spinlock_data);
 
-        while (ready_flag == 1) {
-            struct timespec now;
-            clock_gettime(CLOCK_REALTIME, &now);
-
-            // Überprüfe, ob das Timeout erreicht ist
-            if ((now.tv_sec > timeout.tv_sec) ||
-                (now.tv_sec == timeout.tv_sec && now.tv_nsec > timeout.tv_nsec)) {
-                fprintf(stderr, "Timeout: Empfänger hat das Signal nicht rechtzeitig verarbeitet.\n");
-                break;
-            }
-        }
+        // Entsperre Synchronisation für den Empfänger
+        unlock(&spinlock_sync);
     }
 
     return NULL;
@@ -84,22 +66,23 @@ void *sender(void *arg) {
 
 void *receiver(void *arg) {
     struct timespec *timing = (struct timespec *)arg;
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        while (ready_flag == 0) {
-            // Wait for sender to signal readiness
-            printf("Receiver: not ready yet\n");
-        }
 
-        while (atomic_flag_test_and_set(&spinlock)) {
+    for (int i = 0; i < NUM_ITERATIONS; i++) {
+        // Warte auf Synchronisations-Signal
+        while (atomic_flag_test_and_set(&spinlock_sync)) {
             // Busy waiting
         }
-        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2 + 1]); // End time
-        int data = shared_data; // Simulate data retrieval
-        unlock(&spinlock);
-        
-        // Reset ready_flag for next iteration
-        ready_flag = 0;
+
+        // Sperre Datenzugriff
+        lock(&spinlock_data);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2 + 1]); // Endzeit
+        int data = shared_data; // Simuliere Datenverarbeitung
+        unlock(&spinlock_data);
+
+        // Entsperre Synchronisation für den Sender
+        unlock(&spinlock_sync);
     }
+
     return NULL;
 }
 

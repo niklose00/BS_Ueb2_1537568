@@ -3,95 +3,98 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <time.h>
+#include <float.h>
 #include <math.h>
 
-#define NUM_ITERATIONS 1000
-
+// Globale Variablen
 sem_t semaphore;
+struct timespec start_time, end_time;
+double min_latency = DBL_MAX; // Initial minimal latency
 
-// Timing function
-long calculate_elapsed_time(struct timespec start, struct timespec end) {
-    long seconds = end.tv_sec - start.tv_sec;
-    long nanoseconds = end.tv_nsec - start.tv_nsec;
-    if (nanoseconds < 0) {
-        seconds -= 1;
-        nanoseconds += 1e9;
-    }
-    return seconds * 1e9 + nanoseconds;
-}
+#define NUM_MEASUREMENTS 1000 // Anzahl der Messungen
 
-// Sender thread function
-void *sender(void *arg) {
-    struct timespec *timing = (struct timespec *)arg;
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2]); // Startzeit
-        sem_post(&semaphore); // Signalisiere dem Empfänger
-    }
-    return NULL;
-}
+// Funktion, die der zweite Thread ausführt
+void* thread_func(void* arg) {
+    // Warten auf die Semaphore
+    sem_wait(&semaphore);
 
-// Receiver thread function
-void *receiver(void *arg) {
-    struct timespec *timing = (struct timespec *)arg;
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        sem_wait(&semaphore); // Warten auf Signal
-        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2 + 1]); // Endzeit
-    }
+    // Endzeit messen
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+
     return NULL;
 }
 
 int main() {
-    pthread_t sender_thread, receiver_thread;
-    struct timespec timing[NUM_ITERATIONS * 2];
-    long latencies[NUM_ITERATIONS];
+    pthread_t thread;
+    double latencies[NUM_MEASUREMENTS]; // Array für Latenzen
 
-    // Initialize semaphore
-    sem_init(&semaphore, 0, 0);
-
-    // Create threads
-    pthread_create(&sender_thread, NULL, sender, timing);
-    pthread_create(&receiver_thread, NULL, receiver, timing);
-
-    // Wait for threads to finish
-    pthread_join(sender_thread, NULL);
-    pthread_join(receiver_thread, NULL);
-
-    // Calculate latencies
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        latencies[i] = calculate_elapsed_time(timing[i * 2], timing[i * 2 + 1]);
+    // Semaphore initialisieren
+    if (sem_init(&semaphore, 0, 0) != 0) {
+        perror("Semaphore initialization failed");
+        return EXIT_FAILURE;
     }
 
-    // Calculate statistics
-    long total_latency = 0;
-    long min_latency = latencies[0];
-    long max_latency = latencies[0];
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        total_latency += latencies[i];
-        if (latencies[i] < min_latency) min_latency = latencies[i];
-        if (latencies[i] > max_latency) max_latency = latencies[i];
+    // Thread erstellen
+    if (pthread_create(&thread, NULL, thread_func, NULL) != 0) {
+        perror("Thread creation failed");
+        return EXIT_FAILURE;
     }
-    double mean_latency = (double)total_latency / NUM_ITERATIONS;
 
-    double variance = 0.0;
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        variance += pow(latencies[i] - mean_latency, 2);
+    // Mehrfache Messungen durchführen
+    for (int i = 0; i < NUM_MEASUREMENTS; i++) {
+        // Startzeit messen
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+        // Semaphore setzen
+        sem_post(&semaphore);
+
+        // Warten auf den Abschluss des Threads
+        pthread_join(thread, NULL);
+
+        // Latenz berechnen
+        double latency = (end_time.tv_sec - start_time.tv_sec) * 1e9 +
+                         (end_time.tv_nsec - start_time.tv_nsec);
+
+        latencies[i] = latency;
+
+        // Minimalwert aktualisieren
+        if (latency < min_latency) {
+            min_latency = latency;
+        }
+
+        // Neuen Thread für die nächste Iteration erstellen
+        if (pthread_create(&thread, NULL, thread_func, NULL) != 0) {
+            perror("Thread recreation failed");
+            return EXIT_FAILURE;
+        }
     }
-    variance /= NUM_ITERATIONS;
-    double stddev_latency = sqrt(variance);
 
-    // Calculate 95% confidence interval
-    double margin_of_error = 1.96 * stddev_latency / sqrt(NUM_ITERATIONS);
-
-    // Output results
-    printf("Total latency: %ld ns\n", total_latency);
-    printf("Average latency: %.2f ns\n", mean_latency);
-    printf("Minimum latency: %ld ns\n", min_latency);
-    printf("Maximum latency: %ld ns\n", max_latency);
-    printf("Standard deviation: %.2f ns\n", stddev_latency);
-    printf("95%% Confidence interval: [%.2f ns, %.2f ns]\n", mean_latency - margin_of_error, mean_latency + margin_of_error);
-
-    // Cleanup
+    // Semaphore zerstören
     sem_destroy(&semaphore);
 
-    return 0;
+    // Statistik berechnen
+    double sum = 0.0, mean, stddev = 0.0;
+    for (int i = 0; i < NUM_MEASUREMENTS; i++) {
+        sum += latencies[i];
+    }
+    mean = sum / NUM_MEASUREMENTS;
+
+    for (int i = 0; i < NUM_MEASUREMENTS; i++) {
+        stddev += (latencies[i] - mean) * (latencies[i] - mean);
+    }
+    stddev = sqrt(stddev / NUM_MEASUREMENTS);
+
+    // 95%-Konfidenzintervall berechnen
+    double z = 1.96; // z-Wert für 95%-Konfidenzintervall
+    double confidence_interval = z * (stddev / sqrt(NUM_MEASUREMENTS));
+
+    // Ergebnisse ausgeben
+    printf("Ergebnisse:\n");
+    printf("Minimal gemessene Latenz: %.2f ns\n", min_latency);
+    printf("Mittlere Latenz: %.2f ns\n", mean);
+    printf("Standardabweichung: %.2f ns\n", stddev);
+    printf("95%%-Konfidenzintervall: [%.2f, %.2f] ns\n",
+           mean - confidence_interval, mean + confidence_interval);
+
+    return EXIT_SUCCESS;
 }

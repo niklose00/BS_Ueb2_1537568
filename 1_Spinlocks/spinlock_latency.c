@@ -1,126 +1,102 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
-#include <stdatomic.h>
+#include <stdint.h>
 #include <time.h>
+#include <unistd.h>
 #include <math.h>
 
-#define NUM_ITERATIONS 1000
 
-// Spinlocks
-volatile atomic_flag spinlock_data = ATOMIC_FLAG_INIT; // Schutz des Zugriffs auf shared_data
-volatile atomic_flag spinlock_sync = ATOMIC_FLAG_INIT; // Synchronisation zwischen Sender und Empfänger
+#define ITERATIONS 1000000
 
-// Gemeinsame Ressource
-volatile int shared_data = 0;
+volatile int spinlock = 0;
 
-// Funktion zur Zeitdifferenzberechnung
-long calculate_elapsed_time(struct timespec start, struct timespec end) {
-    long seconds = end.tv_sec - start.tv_sec;
-    long nanoseconds = end.tv_nsec - start.tv_nsec;
-    if (nanoseconds < 0) {
-        seconds -= 1;
-        nanoseconds += 1e9;
-    }
-    return seconds * 1e9 + nanoseconds;
+// Funktion zum Ermitteln der aktuellen Zeit in Nanosekunden
+uint64_t get_time_ns() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e9 + ts.tv_nsec;
 }
 
-// Lock- und Unlock-Funktionen
-void lock(volatile atomic_flag *lock) {
-    while (atomic_flag_test_and_set(lock)) {
-        // Busy waiting
+// Spinlock-Implementierung
+void acquire_spinlock(volatile int *lock) {
+    while (__sync_lock_test_and_set(lock, 1)) {
+        // Busy Waiting
     }
 }
 
-void unlock(volatile atomic_flag *lock) {
-    atomic_flag_clear(lock);
+void release_spinlock(volatile int *lock) {
+    __sync_lock_release(lock);
 }
 
-// Sender-Thread
-void *sender(void *arg) {
-    struct timespec *timing = (struct timespec *)arg;
-
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        lock(&spinlock_sync);
-
-        lock(&spinlock_data);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2]); // Startzeit
-        shared_data = i; // Simulierte Datenübertragung
-        unlock(&spinlock_data);
-
-        unlock(&spinlock_sync);
+// Thread-Funktion
+void *thread_function(void *arg) {
+    int *shared_flag = (int *)arg;
+    for (int i = 0; i < ITERATIONS; i++) {
+        acquire_spinlock(&spinlock);
+        (*shared_flag)++;
+        release_spinlock(&spinlock);
     }
-
-    return NULL;
-}
-
-// Empfänger-Thread
-void *receiver(void *arg) {
-    struct timespec *timing = (struct timespec *)arg;
-
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        while (atomic_flag_test_and_set(&spinlock_sync)) {
-            // Busy waiting
-        }
-
-        lock(&spinlock_data);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &timing[i * 2 + 1]); // Endzeit
-        int data = shared_data; // Simulierte Datenverarbeitung
-        unlock(&spinlock_data);
-
-        unlock(&spinlock_sync);
-    }
-
     return NULL;
 }
 
 int main() {
-    pthread_t sender_thread, receiver_thread;
-    struct timespec timing[NUM_ITERATIONS * 2];
-    long latencies[NUM_ITERATIONS];
+    pthread_t thread1, thread2;
+    int shared_flag = 0;
 
-    // Threads erstellen
-    pthread_create(&sender_thread, NULL, sender, timing);
-    pthread_create(&receiver_thread, NULL, receiver, timing);
-
-    // Auf Threads warten
-    pthread_join(sender_thread, NULL);
-    pthread_join(receiver_thread, NULL);
-
-    // Latenzen berechnen
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        latencies[i] = calculate_elapsed_time(timing[i * 2], timing[i * 2 + 1]);
+    // Erstellen der Threads
+    if (pthread_create(&thread1, NULL, thread_function, &shared_flag) != 0) {
+        perror("Fehler beim Erstellen von Thread 1");
+        exit(EXIT_FAILURE);
     }
 
-    // Statistiken berechnen
-    long total_latency = 0;
-    long min_latency = latencies[0];
-    long max_latency = latencies[0];
-
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        total_latency += latencies[i];
-        if (latencies[i] < min_latency) min_latency = latencies[i];
-        if (latencies[i] > max_latency) max_latency = latencies[i];
+    if (pthread_create(&thread2, NULL, thread_function, &shared_flag) != 0) {
+        perror("Fehler beim Erstellen von Thread 2");
+        exit(EXIT_FAILURE);
     }
 
-    double mean_latency = (double)total_latency / NUM_ITERATIONS;
+    uint64_t start_time, end_time;
+    uint64_t min_latency = UINT64_MAX;
+    uint64_t latencies[ITERATIONS];
 
-    double variance = 0.0;
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        variance += pow(latencies[i] - mean_latency, 2);
+    // Messen der Latenzzeiten
+    for (int i = 0; i < ITERATIONS; i++) {
+        start_time = get_time_ns();
+        acquire_spinlock(&spinlock);
+        release_spinlock(&spinlock);
+        end_time = get_time_ns();
+
+        uint64_t latency = end_time - start_time;
+        latencies[i] = latency;
+        if (latency < min_latency) {
+            min_latency = latency;
+        }
     }
-    variance /= NUM_ITERATIONS;
-    double stddev_latency = sqrt(variance);
 
-    double margin_of_error = 1.96 * stddev_latency / sqrt(NUM_ITERATIONS);
+    // Warten auf die Threads
+    pthread_join(thread1, NULL);
+    pthread_join(thread2, NULL);
+
+    // Berechnung des Mittelwerts und der Standardabweichung
+    double sum = 0.0, mean, stddev = 0.0;
+    for (int i = 0; i < ITERATIONS; i++) {
+        sum += latencies[i];
+    }
+    mean = sum / ITERATIONS;
+
+    for (int i = 0; i < ITERATIONS; i++) {
+        stddev += (latencies[i] - mean) * (latencies[i] - mean);
+    }
+    stddev = sqrt(stddev / ITERATIONS);
+
+    // Konfidenzintervall (95%)
+    double conf_interval = 1.96 * stddev / sqrt(ITERATIONS);
 
     // Ergebnisse ausgeben
-    printf("Total latency: %ld ns\n", total_latency);
-    printf("Average latency: %.2f ns\n", mean_latency);
-    printf("Minimum latency: %ld ns\n", min_latency);
-    printf("Maximum latency: %ld ns\n", max_latency);
-    printf("Standard deviation: %.2f ns\n", stddev_latency);
-    printf("95%% Confidence interval: [%.2f ns, %.2f ns]\n", mean_latency - margin_of_error, mean_latency + margin_of_error);
+    printf("Minimale Latenz: %lu ns\n", min_latency);
+    printf("Mittlere Latenz: %.2f ns\n", mean);
+    printf("Standardabweichung: %.2f ns\n", stddev);
+    printf("95%%-Konfidenzintervall: [%.2f ns, %.2f ns]\n", mean - conf_interval, mean + conf_interval);
 
     return 0;
 }

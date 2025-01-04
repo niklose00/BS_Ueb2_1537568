@@ -1,85 +1,91 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <zmq.h>
 #include <pthread.h>
+#include <zmq.h>
 #include <time.h>
+#include <stdlib.h>
+#include <math.h>
 
-#define NUM_ITERATIONS 1000
+#define NUM_ITERATIONS 10000
 
-// Timing function
-long calculate_elapsed_time(struct timespec start, struct timespec end) {
-    return (end.tv_sec - start.tv_sec) * 1e9 + (end.tv_nsec - start.tv_nsec);
-}
+double latencies[NUM_ITERATIONS]; // Array zur Speicherung der Latenzen
 
-// Sender thread for intra-process communication
-void *intra_process_sender(void *context) {
-    void *sender = zmq_socket(context, ZMQ_REQ);
-    if (zmq_connect(sender, "inproc://latency_test") != 0) {
-        perror("zmq_connect failed");
-        exit(EXIT_FAILURE);
-    }
+void* sender(void* context) {
+    void* socket = zmq_socket(context, ZMQ_PAIR);
+    zmq_bind(socket, "inproc://latency_test");
 
+    struct timespec start_time;
     for (int i = 0; i < NUM_ITERATIONS; i++) {
-        zmq_send(sender, "ping", 4, 0);
-        char buffer[10];
-        zmq_recv(sender, buffer, 10, 0);
+        clock_gettime(CLOCK_MONOTONIC, &start_time); // Startzeit erfassen
+        zmq_send(socket, &start_time, sizeof(start_time), 0);
     }
 
-    zmq_close(sender);
+    zmq_close(socket);
     return NULL;
 }
 
-// Receiver thread for intra-process communication
-void *intra_process_receiver(void *context) {
-    void *receiver = zmq_socket(context, ZMQ_REP);
-    if (zmq_bind(receiver, "inproc://latency_test") != 0) {
-        perror("zmq_bind failed");
-        exit(EXIT_FAILURE);
-    }
+void* receiver(void* context) {
+    void* socket = zmq_socket(context, ZMQ_PAIR);
+    zmq_connect(socket, "inproc://latency_test");
 
+    struct timespec start_time, end_time;
     for (int i = 0; i < NUM_ITERATIONS; i++) {
-        char buffer[10];
-        zmq_recv(receiver, buffer, 10, 0);
-        zmq_send(receiver, "pong", 4, 0);
+        zmq_recv(socket, &start_time, sizeof(start_time), 0); // Startzeit empfangen
+        clock_gettime(CLOCK_MONOTONIC, &end_time);           // Endzeit erfassen
+
+        // Latenz berechnen und speichern
+        double latency = (end_time.tv_sec - start_time.tv_sec) * 1e6 +
+                         (end_time.tv_nsec - start_time.tv_nsec) / 1e3; // Latenz in Mikrosekunden
+        latencies[i] = latency;
     }
 
-    zmq_close(receiver);
+    zmq_close(socket);
     return NULL;
+}
+
+void calculate_statistics() {
+    double sum = 0.0, mean, stddev, min_latency = latencies[0];
+    for (int i = 0; i < NUM_ITERATIONS; i++) {
+        sum += latencies[i];
+        if (latencies[i] < min_latency) {
+            min_latency = latencies[i];
+        }
+    }
+    mean = sum / NUM_ITERATIONS;
+
+    // Standardabweichung berechnen
+    double variance_sum = 0.0;
+    for (int i = 0; i < NUM_ITERATIONS; i++) {
+        variance_sum += pow(latencies[i] - mean, 2);
+    }
+    stddev = sqrt(variance_sum / NUM_ITERATIONS);
+
+    // Konfidenzintervall berechnen
+    double z = 1.96; // z-Wert für 95% Konfidenzintervall
+    double margin_of_error = z * (stddev / sqrt(NUM_ITERATIONS));
+    double ci_lower = mean - margin_of_error;
+    double ci_upper = mean + margin_of_error;
+
+    // Ergebnisse ausgeben
+    printf("Minimale Latenz: %.2f µs\n", min_latency);
+    printf("Mittlere Latenz: %.2f µs\n", mean);
+    printf("Standardabweichung: %.2f µs\n", stddev);
+    printf("95%% Konfidenzintervall: [%.2f, %.2f] µs\n", ci_lower, ci_upper);
 }
 
 int main() {
-    struct timespec start, end;
-
-    // Intra-process communication setup
-    printf("Intra-process communication:\n");
-    void *context = zmq_ctx_new();
+    void* context = zmq_ctx_new();
 
     pthread_t sender_thread, receiver_thread;
 
-    // Start timing
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    pthread_create(&sender_thread, NULL, sender, context);
+    pthread_create(&receiver_thread, NULL, receiver, context);
 
-    // Create threads
-    pthread_create(&receiver_thread, NULL, intra_process_receiver, context);
-    pthread_create(&sender_thread, NULL, intra_process_sender, context);
-
-    // Wait for threads to finish
     pthread_join(sender_thread, NULL);
     pthread_join(receiver_thread, NULL);
 
-    // End timing
-    clock_gettime(CLOCK_MONOTONIC, &end);
-
-    // Calculate elapsed time
-    long elapsed_time = calculate_elapsed_time(start, end);
-    double average_latency = (double)elapsed_time / (NUM_ITERATIONS * 2);
-
-    // Output results
-    printf("Total time: %ld ns\n", elapsed_time);
-    printf("Average latency per message: %.2f ns\n", average_latency);
-
     zmq_ctx_destroy(context);
+
+    calculate_statistics();
 
     return 0;
 }

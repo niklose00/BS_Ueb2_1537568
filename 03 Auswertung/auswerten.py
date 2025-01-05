@@ -27,11 +27,18 @@ def create_boxplot_from_csv(file_path, output_file=None):
     plt.figure(figsize=(8, 5))
     plt.boxplot(data, patch_artist=True, boxprops=dict(facecolor="lightblue"))
     plt.title("Boxplot", fontsize=16)
-    plt.ylabel("Werte", fontsize=12)
+    plt.ylabel("Latenzzeiten (ns)", fontsize=12)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
 
     # Optional: Plot speichern
     if output_file:
+        # Ordnerpfad extrahieren und sicherstellen, dass er existiert
+        output_dir = os.path.dirname(output_file)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            print(f"Ordner '{output_dir}' wurde erstellt.")
+        
+        # Bild speichern
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"Boxplot wurde erfolgreich unter '{output_file}' gespeichert.")
     
@@ -43,7 +50,7 @@ if __name__ == "__main__":
     try:
         # Anpassung an deine Datei
         csv_file = "02_Outputs/01_spinlock_latencies.csv"  # Datei anpassen
-        output_image = "boxplot.png"  # Optional: Bild speichern
+        output_image = "Boxplots/01_spinlock_latencies_boxplots.png"  # Optional: Bild speichern
         
         # Funktion aufrufen
         create_boxplot_from_csv(csv_file, output_image)

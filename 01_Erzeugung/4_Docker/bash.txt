@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Netzwerkkonfigurationen
+networks=("bridge" "host" "overlay")
+
+# Testdurchführung
+for net in "${networks[@]}"; do
+    docker-compose down
+    docker-compose up --build -d
+    docker-compose logs sender > results_${net}.log
+    docker-compose down
+done
+
+echo "Tests abgeschlossen. Ergebnisse in results_*.log gespeichert."

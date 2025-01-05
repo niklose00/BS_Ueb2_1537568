@@ -1,0 +1,21 @@
+
+services:
+  sender:
+    build:
+      context: ./sender
+      dockerfile: Dockerfile
+    networks:
+      - latency_test_network
+    depends_on:
+      - receiver
+
+  receiver:
+    build:
+      context: ./receiver
+      dockerfile: Dockerfile
+    networks:
+      - latency_test_network
+
+networks:
+  latency_test_network:
+    driver: bridge

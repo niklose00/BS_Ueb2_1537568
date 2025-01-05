@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -pthread -lm -I./0_Bib
 TARGET = spinlock_latency
-SRC = 1_Spinlocks/spinlock_latency.c 0_Bib/csv_writer.c
+SRC = 1_Spinlocks/spinlock_latency.c 0_Bib/csv_writer.c 0_Bib/statistics.c
 BUILD_DIR = bin
 
 # Standardziel: Bauen und in den Zielordner verschieben

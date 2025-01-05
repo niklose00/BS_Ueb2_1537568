@@ -6,9 +6,9 @@
 #include <unistd.h>
 #include <math.h>
 #include "../0_Bib/csv_writer.h"
+#include "../0_Bib/statistics.h"
 
-
-#define ITERATIONS 10
+#define ITERATIONS 1000
 
 volatile int spinlock = 0;
 
@@ -47,7 +47,6 @@ void *thread_function(void *arg)
     return NULL;
 }
 
-
 int main()
 {
     pthread_t thread1, thread2;
@@ -67,58 +66,49 @@ int main()
     }
 
     uint64_t start_time, end_time;
-    uint64_t min_latency = UINT64_MAX;
     uint64_t latencies[ITERATIONS];
+
+    // Vorwärmen von clock_gettime, um Initialisierungskosten zu vermeiden und präzisere Messungen sicherzustellen
+    end_time = get_time_ns();
+    start_time = get_time_ns();
 
     // Messen der Latenzzeiten
     for (int i = 0; i < ITERATIONS; i++)
     {
+
         start_time = get_time_ns();
         acquire_spinlock(&spinlock);
         release_spinlock(&spinlock);
         end_time = get_time_ns();
 
-        printf("START: %lu ns\n", start_time); // Korrekte Ausgabe
-        printf("ENDE: %lu ns\n", end_time);    // Korrekte Ausgabe
-
         uint64_t latency = end_time - start_time;
         latencies[i] = latency;
-        if (latency < min_latency)
-        {
-            min_latency = latency;
-        }
     }
 
     // Warten auf die Threads
     pthread_join(thread1, NULL);
     pthread_join(thread2, NULL);
 
-    // Berechnung des Mittelwerts und der Standardabweichung
-    double sum = 0.0, mean, stddev = 0.0;
+    // Konvertiere latencies in double-Werte
+    double latencies_double[ITERATIONS];
     for (int i = 0; i < ITERATIONS; i++)
     {
-        sum += latencies[i];
-        printf("test%lu\n", latencies[i]);
+        latencies_double[i] = (double)latencies[i];
     }
-    mean = sum / ITERATIONS;
 
-    for (int i = 0; i < ITERATIONS; i++)
-    {
-        stddev += (latencies[i] - mean) * (latencies[i] - mean);
-    }
-    stddev = sqrt(stddev / ITERATIONS);
-
-    // Konfidenzintervall (95%)
-    double conf_interval = 1.96 * stddev / sqrt(ITERATIONS);
+    // Statistik berechnen
+    double min, max, mean, stddev, ci_lower, ci_upper;
+    calculate_statistics(latencies_double, ITERATIONS, &min, &max, &mean, &stddev, &ci_lower, &ci_upper);
 
     // Ergebnisse ausgeben
-    printf("Minimale Latenz: %lu ns\n", min_latency);
+    printf("Minimale Latenz: %.2f ns\n", min);
+    printf("Maximale Latenz: %.2f ns\n", max);
     printf("Mittlere Latenz: %.2f ns\n", mean);
     printf("Standardabweichung: %.2f ns\n", stddev);
-    printf("95%%-Konfidenzintervall: [%.2f ns, %.2f ns]\n", mean - conf_interval, mean + conf_interval);
+    printf("95%%-Konfidenzintervall: [%.2f ns, %.2f ns]\n", ci_lower, ci_upper);
 
     // CSV-Datei erstellen
     write_csv("01_spinlock_latencies.csv", latencies, ITERATIONS);
-    
+
     return 0;
 }

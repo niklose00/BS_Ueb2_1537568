@@ -7,7 +7,7 @@
 #include <math.h>
 
 
-#define ITERATIONS 1000000
+#define ITERATIONS 10
 
 volatile int spinlock = 0;
 
@@ -66,6 +66,10 @@ int main() {
         release_spinlock(&spinlock);
         end_time = get_time_ns();
 
+        printf("START: %lu ns\n", start_time); // Korrekte Ausgabe
+        printf("ENDE: %lu ns\n", end_time);   // Korrekte Ausgabe
+
+
         uint64_t latency = end_time - start_time;
         latencies[i] = latency;
         if (latency < min_latency) {
@@ -81,6 +85,7 @@ int main() {
     double sum = 0.0, mean, stddev = 0.0;
     for (int i = 0; i < ITERATIONS; i++) {
         sum += latencies[i];
+        printf("test%lu\n", latencies[i]);
     }
     mean = sum / ITERATIONS;
 

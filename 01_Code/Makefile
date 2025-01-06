@@ -18,6 +18,7 @@ SRC3_1 = 3_ZeroMQ/Intra/zeromq_latency.c
 
 OBJ = $(SRC:.c=.o)
 OBJ2 = $(SRC2:.c=.o)
+OBJ3_1 = $(SRC3_1:.c=.o)
 
 # Standardziel
 all: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET2) $(BUILD_DIR)/$(TARGET3_1)
@@ -33,9 +34,9 @@ $(BUILD_DIR)/$(TARGET2): $(OBJ2) $(COMMON_OBJ)
 	$(CC) -o $@ $^ $(CFLAGS)
 
 # Ziel 3_1
-$(BUILD_DIR)/$(TARGET3_1): $(OBJ2) $(COMMON_OBJ)
+$(BUILD_DIR)/$(TARGET3_1): $(OBJ3_1) $(COMMON_OBJ)
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -o $@ $^ $(CFLAGS) -lzmq
 
 # Regel für .o-Dateien
 %.o: %.c

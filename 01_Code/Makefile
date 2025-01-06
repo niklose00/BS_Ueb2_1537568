@@ -1,17 +1,39 @@
 CC = gcc
 CFLAGS = -pthread -lm -I./0_Bib
-TARGET = spinlock_latency
-SRC = 1_Spinlocks/spinlock_latency.c 0_Bib/csv_writer.c 0_Bib/statistics.c
 BUILD_DIR = bin
 
-# Standardziel: Bauen und in den Zielordner verschieben
-all: $(BUILD_DIR)/$(TARGET)
+# Ziele
+TARGET = spinlock_latency
+TARGET2 = semaphore_latency
 
-# Ziel für die ausführbare Datei im Zielordner
-$(BUILD_DIR)/$(TARGET): $(SRC)
-	mkdir -p $(BUILD_DIR)         # Erstelle das Zielverzeichnis, falls es nicht existiert
-	$(CC) -o $@ $(SRC) $(CFLAGS)  # Kompiliere und speichere im Zielordner
+# Gemeinsame Dateien
+COMMON_SRC = 0_Bib/csv_writer.c 0_Bib/statistics.c
+COMMON_OBJ = $(COMMON_SRC:.c=.o)
+
+# Quellen für jedes Ziel
+SRC = 1_Spinlocks/spinlock_latency.c
+SRC2 = 2_Semaphores/semaphore_latency.c
+
+OBJ = $(SRC:.c=.o)
+OBJ2 = $(SRC2:.c=.o)
+
+# Standardziel
+all: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET2)
+
+# Ziel 1
+$(BUILD_DIR)/$(TARGET): $(OBJ) $(COMMON_OBJ)
+	mkdir -p $(BUILD_DIR)
+	$(CC) -o $@ $^ $(CFLAGS)
+
+# Ziel 2
+$(BUILD_DIR)/$(TARGET2): $(OBJ2) $(COMMON_OBJ)
+	mkdir -p $(BUILD_DIR)
+	$(CC) -o $@ $^ $(CFLAGS)
+
+# Regel für .o-Dateien
+%.o: %.c
+	$(CC) -c $< -o $@ $(CFLAGS)
 
 # Bereinigen
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) *.o

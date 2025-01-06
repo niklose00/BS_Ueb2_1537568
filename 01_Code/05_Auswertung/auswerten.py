@@ -49,8 +49,8 @@ def create_boxplot_from_csv(file_path, output_file=None):
 if __name__ == "__main__":
     try:
         # Anpassung an deine Datei
-        csv_file = "02_Outputs/01_spinlock_latencies.csv"  # Datei anpassen
-        output_image = "Boxplots/01_spinlock_latencies_boxplots.png"  # Optional: Bild speichern
+        csv_file = "02_Outputs/Csv/01_spinlock_latencies.csv"  # Datei anpassen
+        output_image = "02_Outputs/Boxplots/01_spinlock_latencies_boxplots.png"  # Optional: Bild speichern
         
         # Funktion aufrufen
         create_boxplot_from_csv(csv_file, output_image)

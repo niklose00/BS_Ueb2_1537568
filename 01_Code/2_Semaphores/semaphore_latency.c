@@ -5,6 +5,8 @@
 #include <time.h>
 #include <float.h>
 #include <math.h>
+#include "../0_Bib/csv_writer.h"
+#include "../0_Bib/statistics.h"
 
 // Globale Variablen
 sem_t semaphore;

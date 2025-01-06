@@ -17,7 +17,7 @@ void ensure_directory_exists(const char *dir) {
 }
 
 void write_csv(const char *filename, uint64_t *data, size_t size) {
-    const char *output_dir = "../../02_Outputs";  // Ordner im Root-Verzeichnis
+    const char *output_dir = "../../02_Outputs/Csv";  // Ordner im Root-Verzeichnis
     ensure_directory_exists(output_dir);      // Sicherstellen, dass der Ordner existiert
 
     // Dynamischer Pfad zur Datei im Ordner "02_Outputs"

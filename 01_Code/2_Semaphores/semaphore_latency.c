@@ -13,7 +13,7 @@ sem_t semaphore;
 struct timespec start_time, end_time;
 double min_latency = DBL_MAX; // Initial minimal latency
 
-#define NUM_MEASUREMENTS 1000 // Anzahl der Messungen
+#define ITERATIONS 1000 // Anzahl der Messungen
 
 // Funktion, die der zweite Thread ausführt
 void* thread_func(void* arg) {
@@ -28,7 +28,7 @@ void* thread_func(void* arg) {
 
 int main() {
     pthread_t thread;
-    double latencies[NUM_MEASUREMENTS]; // Array für Latenzen
+    uint64_t latencies[ITERATIONS]; // Array für Latenzen
 
     // Semaphore initialisieren
     if (sem_init(&semaphore, 0, 0) != 0) {
@@ -43,7 +43,7 @@ int main() {
     }
 
     // Mehrfache Messungen durchführen
-    for (int i = 0; i < NUM_MEASUREMENTS; i++) {
+    for (int i = 0; i < ITERATIONS; i++) {
         // Startzeit messen
         clock_gettime(CLOCK_MONOTONIC, &start_time);
 
@@ -76,19 +76,19 @@ int main() {
 
     // Statistik berechnen
     double sum = 0.0, mean, stddev = 0.0;
-    for (int i = 0; i < NUM_MEASUREMENTS; i++) {
+    for (int i = 0; i < ITERATIONS; i++) {
         sum += latencies[i];
     }
-    mean = sum / NUM_MEASUREMENTS;
+    mean = sum / ITERATIONS;
 
-    for (int i = 0; i < NUM_MEASUREMENTS; i++) {
+    for (int i = 0; i < ITERATIONS; i++) {
         stddev += (latencies[i] - mean) * (latencies[i] - mean);
     }
-    stddev = sqrt(stddev / NUM_MEASUREMENTS);
+    stddev = sqrt(stddev / ITERATIONS);
 
     // 95%-Konfidenzintervall berechnen
     double z = 1.96; // z-Wert für 95%-Konfidenzintervall
-    double confidence_interval = z * (stddev / sqrt(NUM_MEASUREMENTS));
+    double confidence_interval = z * (stddev / sqrt(ITERATIONS));
 
     // Ergebnisse ausgeben
     printf("Ergebnisse:\n");
@@ -97,6 +97,9 @@ int main() {
     printf("Standardabweichung: %.2f ns\n", stddev);
     printf("95%%-Konfidenzintervall: [%.2f, %.2f] ns\n",
            mean - confidence_interval, mean + confidence_interval);
+
+    // CSV-Datei erstellen
+    write_csv("02_semaphores_latencies.csv", latencies, ITERATIONS);
 
     return EXIT_SUCCESS;
 }

@@ -48,11 +48,24 @@ def create_boxplot_from_csv(file_path, output_file=None):
 # Beispiel-Aufruf
 if __name__ == "__main__":
     try:
-        # Anpassung an deine Datei
-        csv_file = "02_Outputs/Csv/01_spinlock_latencies.csv"  # Datei anpassen
-        output_image = "02_Outputs/Boxplots/01_spinlock_latencies_boxplots.png"  # Optional: Bild speichern
+        input_folder = "02_Outputs/Csv"  # Ordner mit den CSV-Dateien
+        output_folder = "02_Outputs/Boxplots"  # Ordner für die Boxplots
         
-        # Funktion aufrufen
-        create_boxplot_from_csv(csv_file, output_image)
+        # Sicherstellen, dass der Ausgabeordner existiert
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            print(f"Ordner '{output_folder}' wurde erstellt.")
+        
+        # Alle CSV-Dateien im Eingabeordner durchlaufen
+        for file_name in os.listdir(input_folder):
+            if file_name.endswith(".csv"):  # Nur CSV-Dateien verarbeiten
+                input_file = os.path.join(input_folder, file_name)
+                output_file = os.path.join(output_folder, f"{file_name.split('.')[0]}_boxplot.png")
+                
+                print(f"Verarbeite Datei: {input_file}")
+                try:
+                    create_boxplot_from_csv(input_file, output_file)
+                except Exception as e:
+                    print(f"Fehler beim Verarbeiten der Datei '{file_name}': {e}")
     except Exception as e:
-        print(f"Fehler: {e}")
+        print(f"Ein schwerwiegender Fehler ist aufgetreten: {e}")

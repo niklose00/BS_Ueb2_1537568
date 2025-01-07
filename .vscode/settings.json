@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "csv_writer.h": "c"
+        "csv_writer.h": "c",
+        "statistics.h": "c"
     }
 }

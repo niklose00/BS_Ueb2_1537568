@@ -4,79 +4,86 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include "../0_Bib/csv_writer.h"
+#include "../0_Bib/statistics.h"
 
-#define NUM_ITERATIONS 1000
+#define ITERATIONS 1000
 #define MESSAGE_SIZE 10
 
-long calculate_elapsed_time(struct timespec start, struct timespec end) {
-    return (end.tv_sec - start.tv_sec) * 1e9 + (end.tv_nsec - start.tv_nsec);
+uint64_t get_time_ns()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e9 + ts.tv_nsec;
 }
 
-void calculate_statistics(long *latencies, int size, double *mean, double *stddev, double *ci_lower, double *ci_upper) {
-    long sum = 0;
-    for (int i = 0; i < size; i++) {
-        sum += latencies[i];
-    }
-    *mean = (double)sum / size;
-
-    double variance = 0.0;
-    for (int i = 0; i < size; i++) {
-        variance += pow(latencies[i] - *mean, 2);
-    }
-    variance /= size;
-    *stddev = sqrt(variance);
-
-    double z = 1.96; // z-Wert für 95%-Konfidenzintervall
-    double margin_of_error = z * (*stddev / sqrt(size));
-    *ci_lower = *mean - margin_of_error;
-    *ci_upper = *mean + margin_of_error;
-}
-
-int main() {
+int main()
+{
     void *context = zmq_ctx_new();
-    if (context == NULL) {
+    if (context == NULL)
+    {
         perror("Failed to create ZeroMQ context");
         exit(EXIT_FAILURE);
     }
 
     void *socket = zmq_socket(context, ZMQ_REQ);
-    if (socket == NULL) {
+    if (socket == NULL)
+    {
         perror("Failed to create ZeroMQ socket");
         zmq_ctx_destroy(context);
         exit(EXIT_FAILURE);
     }
 
-    if (zmq_connect(socket, "tcp://localhost:5555") != 0) {
+    if (zmq_connect(socket, "tcp://localhost:5555") != 0)
+    {
         perror("Failed to connect to ZeroMQ socket");
         zmq_close(socket);
         zmq_ctx_destroy(context);
         exit(EXIT_FAILURE);
     }
 
-    struct timespec start, end;
-    long latencies[NUM_ITERATIONS];
+    uint64_t start_time, end_time;
+    uint64_t latencies[ITERATIONS];
     char buffer[MESSAGE_SIZE];
 
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        clock_gettime(CLOCK_MONOTONIC, &start);
+    // Vorwärmen von clock_gettime, um Initialisierungskosten zu vermeiden und präzisere Messungen sicherzustellen
+    end_time = get_time_ns();
+    start_time = get_time_ns();
+
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        start_time = get_time_ns();
         zmq_send(socket, "ping", 4, 0);
         zmq_recv(socket, buffer, MESSAGE_SIZE, 0);
-        clock_gettime(CLOCK_MONOTONIC, &end);
+        end_time = get_time_ns();
 
-        latencies[i] = calculate_elapsed_time(start, end);
+        uint64_t latency = end_time - start_time;
+        latencies[i] = latency;
     }
 
     zmq_close(socket);
     zmq_ctx_destroy(context);
 
-    // Statistische Analyse
-    double mean, stddev, ci_lower, ci_upper;
-    calculate_statistics(latencies, NUM_ITERATIONS, &mean, &stddev, &ci_lower, &ci_upper);
+    // Konvertiere latencies in double-Werte
+    double latencies_double[ITERATIONS];
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        latencies_double[i] = (double)latencies[i];
+    }
 
-    printf("Minimale Latenz: %ld ns\n", latencies[0]);
+    // Statistik berechnen
+    double min, max, mean, stddev, ci_lower, ci_upper;
+    calculate_statistics(latencies_double, ITERATIONS, &min, &max, &mean, &stddev, &ci_lower, &ci_upper);
+
+    // Ergebnisse ausgeben
+    printf("Minimale Latenz: %.2f ns\n", min);
+    printf("Maximale Latenz: %.2f ns\n", max);
     printf("Mittlere Latenz: %.2f ns\n", mean);
     printf("Standardabweichung: %.2f ns\n", stddev);
-    printf("95%% Konfidenzintervall: [%.2f, %.2f] ns\n", ci_lower, ci_upper);
+    printf("95%%-Konfidenzintervall: [%.2f ns, %.2f ns]\n", ci_lower, ci_upper);
+
+    // CSV-Datei erstellen
+    write_csv("03_zeromq_inter_latency.csv", latencies, ITERATIONS);
 
     return 0;
 }

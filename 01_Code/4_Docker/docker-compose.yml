@@ -2,8 +2,8 @@
 services:
   sender:
     build:
-      context: ./sender
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: ./01_Code/4_Docker/sender/Dockerfile
     networks:
       - latency_test_network
     depends_on:

@@ -4,72 +4,65 @@
 #include <time.h>
 #include <stdlib.h>
 #include <math.h>
+#include "./csv_writer.h"
+#include "../../0_Bib/statistics.h"
 
-#define NUM_ITERATIONS 1000
+#define ITERATIONS 1000
 
-long calculate_elapsed_time(struct timespec start, struct timespec end) {
-    return (end.tv_sec - start.tv_sec) * 1e9 + (end.tv_nsec - start.tv_nsec);
+uint64_t get_time_ns()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e9 + ts.tv_nsec;
 }
 
-double calculate_mean(long *data, int size) {
-    long sum = 0;
-    for (int i = 0; i < size; i++) {
-        sum += data[i];
-    }
-    return (double)sum / size;
-}
-
-double calculate_standard_deviation(long *data, int size, double mean) {
-    double sum_squared_diff = 0;
-    for (int i = 0; i < size; i++) {
-        sum_squared_diff += pow(data[i] - mean, 2);
-    }
-    return sqrt(sum_squared_diff / size);
-}
-
-int compare(const void *a, const void *b) {
-    return (*(long *)a - *(long *)b);
-}
-
-int main() {
+int main()
+{
     void *context = zmq_ctx_new();
     void *socket = zmq_socket(context, ZMQ_REQ);
     zmq_connect(socket, "tcp://receiver:5555");
 
-    struct timespec start, end;
-    long latencies[NUM_ITERATIONS];
+    uint64_t start_time, end_time;
+    long latencies[ITERATIONS];
     long total_time = 0;
 
-    for (int i = 0; i < NUM_ITERATIONS; i++) {
-        clock_gettime(CLOCK_MONOTONIC, &start);
+    // Vorwärmen von clock_gettime, um Initialisierungskosten zu vermeiden und präzisere Messungen sicherzustellen
+    end_time = get_time_ns();
+    start_time = get_time_ns();
+
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        start_time = get_time_ns();
         zmq_send(socket, "ping", 4, 0);
 
         char buffer[10];
         zmq_recv(socket, buffer, 10, 0);
-        clock_gettime(CLOCK_MONOTONIC, &end);
+        end_time = get_time_ns();
 
-        latencies[i] = calculate_elapsed_time(start, end);
-        total_time += latencies[i];
+        uint64_t latency = end_time - start_time;
+        latencies[i] = latency;
     }
 
-    // Sort the latencies to find min and max
-    qsort(latencies, NUM_ITERATIONS, sizeof(long), compare);
+    // Konvertiere latencies in double-Werte
+    double latencies_double[ITERATIONS];
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        latencies_double[i] = (double)latencies[i];
+    }
 
-    long min_latency = latencies[0];
-    long max_latency = latencies[NUM_ITERATIONS - 1];
-    double mean_latency = calculate_mean(latencies, NUM_ITERATIONS);
-    double stddev = calculate_standard_deviation(latencies, NUM_ITERATIONS, mean_latency);
+    // Statistik berechnen
+    double min, max, mean, stddev, ci_lower, ci_upper;
+    calculate_statistics(latencies_double, ITERATIONS, &min, &max, &mean, &stddev, &ci_lower, &ci_upper);
 
-    // Calculate 95% confidence interval
-    double margin_of_error = 1.96 * (stddev / sqrt(NUM_ITERATIONS));
-    double lower_bound = mean_latency - margin_of_error;
-    double upper_bound = mean_latency + margin_of_error;
+    // Ergebnisse ausgeben
+    printf("Minimale Latenz: %.2f ns\n", min);
+    printf("Maximale Latenz: %.2f ns\n", max);
+    printf("Mittlere Latenz: %.2f ns\n", mean);
+    printf("Standardabweichung: %.2f ns\n", stddev);
+    printf("95%%-Konfidenzintervall: [%.2f ns, %.2f ns]\n", ci_lower, ci_upper);
 
-    printf("Total time: %ld ns\n", total_time);
-    printf("Average latency: %.2f ns\n", mean_latency);
-    printf("Min latency: %ld ns\n", min_latency);
-    printf("Max latency: %ld ns\n", max_latency);
-    printf("95%% Confidence Interval: [%.2f, %.2f] ns\n", lower_bound, upper_bound);
+    // CSV-Datei erstellen
+    write_csv("04_docker_latencies.csv", latencies, ITERATIONS);
 
     zmq_close(socket);
     zmq_ctx_destroy(context);

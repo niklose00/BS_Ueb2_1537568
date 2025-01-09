@@ -1,6 +1,8 @@
 CC = gcc
 CFLAGS = -pthread -lm -I./0_Bib
 BUILD_DIR = bin
+OBJ_DIR = $(BUILD_DIR)/objects
+EXEC_DIR = $(BUILD_DIR)/executables
 
 # Ziele
 TARGET = spinlock_latency
@@ -11,7 +13,7 @@ TARGET3_2_receiver = zeromq_inter_receiver_latency
 
 # Gemeinsame Dateien
 COMMON_SRC = 0_Bib/csv_writer.c 0_Bib/statistics.c
-COMMON_OBJ = $(COMMON_SRC:.c=.o)
+COMMON_OBJ = $(patsubst %.c,$(OBJ_DIR)/%.o,$(COMMON_SRC))
 
 # Quellen für jedes Ziel
 SRC = 1_Spinlocks/spinlock_latency.c
@@ -20,45 +22,46 @@ SRC3_1 = 3_ZeroMQ/Intra/zeromq_latency.c
 SRC3_2_sender = 3_ZeroMQ/Inter/zmq_sender.c
 SRC3_2_receiver = 3_ZeroMQ/Inter/zmq_receiver.c
 
-OBJ = $(SRC:.c=.o)
-OBJ2 = $(SRC2:.c=.o)
-OBJ3_1 = $(SRC3_1:.c=.o)
-OBJ3_2_sender = $(SRC3_2_sender:.c=.o)
-OBJ3_2_receiver = $(SRC3_2_receiver:.c=.o)
+# Objektdateien (mit Pfad zu $(OBJ_DIR))
+OBJ = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC))
+OBJ2 = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC2))
+OBJ3_1 = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC3_1))
+OBJ3_2_sender = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC3_2_sender))
+OBJ3_2_receiver = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC3_2_receiver))
 
 # Standardziel
-all: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET2) $(BUILD_DIR)/$(TARGET3_1) $(BUILD_DIR)/$(TARGET3_2_sender) $(BUILD_DIR)/$(TARGET3_2_receiver)
+all: $(EXEC_DIR)/$(TARGET) $(EXEC_DIR)/$(TARGET2) $(EXEC_DIR)/$(TARGET3_1) $(EXEC_DIR)/$(TARGET3_2_sender) $(EXEC_DIR)/$(TARGET3_2_receiver)
 
 # Ziel 1
-$(BUILD_DIR)/$(TARGET): $(OBJ) $(COMMON_OBJ)
-	mkdir -p $(BUILD_DIR)
+$(EXEC_DIR)/$(TARGET): $(OBJ) $(COMMON_OBJ)
+	mkdir -p $(EXEC_DIR)
 	$(CC) -o $@ $^ $(CFLAGS)
 
 # Ziel 2
-$(BUILD_DIR)/$(TARGET2): $(OBJ2) $(COMMON_OBJ)
-	mkdir -p $(BUILD_DIR)
+$(EXEC_DIR)/$(TARGET2): $(OBJ2) $(COMMON_OBJ)
+	mkdir -p $(EXEC_DIR)
 	$(CC) -o $@ $^ $(CFLAGS)
 
 # Ziel 3_1
-$(BUILD_DIR)/$(TARGET3_1): $(OBJ3_1) $(COMMON_OBJ)
-	mkdir -p $(BUILD_DIR)
+$(EXEC_DIR)/$(TARGET3_1): $(OBJ3_1) $(COMMON_OBJ)
+	mkdir -p $(EXEC_DIR)
 	$(CC) -o $@ $^ $(CFLAGS) -lzmq
 
-# Ziel 3_2
-#sender
-$(BUILD_DIR)/$(TARGET3_2_sender): $(OBJ3_2_sender) $(COMMON_OBJ)
-	mkdir -p $(BUILD_DIR)
+# Ziel 3_2 (Sender)
+$(EXEC_DIR)/$(TARGET3_2_sender): $(OBJ3_2_sender) $(COMMON_OBJ)
+	mkdir -p $(EXEC_DIR)
 	$(CC) -o $@ $^ $(CFLAGS) -lzmq
 
-#receiver
-$(BUILD_DIR)/$(TARGET3_2_receiver): $(OBJ3_2_receiver) $(COMMON_OBJ)
-	mkdir -p $(BUILD_DIR)
+# Ziel 3_2 (Receiver)
+$(EXEC_DIR)/$(TARGET3_2_receiver): $(OBJ3_2_receiver) $(COMMON_OBJ)
+	mkdir -p $(EXEC_DIR)
 	$(CC) -o $@ $^ $(CFLAGS) -lzmq
 
 # Regel für .o-Dateien
-%.o: %.c
+$(OBJ_DIR)/%.o: %.c
+	mkdir -p $(dir $@)
 	$(CC) -c $< -o $@ $(CFLAGS)
 
 # Bereinigen
 clean:
-	rm -rf $(BUILD_DIR) *.o
+	rm -rf $(BUILD_DIR)

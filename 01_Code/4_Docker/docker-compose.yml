@@ -1,4 +1,3 @@
-
 services:
   sender:
     build:

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "./csv_writer.h"
-#include "../../0_Bib/statistics.h"
+#include "./statistics.h"
 
 #define ITERATIONS 1000
 

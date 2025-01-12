@@ -43,7 +43,7 @@ def create_boxplot_from_csv(file_path, output_file=None):
         print(f"Boxplot wurde erfolgreich unter '{output_file}' gespeichert.")
     
     # Plot anzeigen
-    plt.show()
+    # plt.show()
 
 # Beispiel-Aufruf
 if __name__ == "__main__":
@@ -57,6 +57,8 @@ if __name__ == "__main__":
             print(f"Ordner '{output_folder}' wurde erstellt.")
         
         # Alle CSV-Dateien im Eingabeordner durchlaufen
+
+        
         for file_name in os.listdir(input_folder):
             if file_name.endswith(".csv"):  # Nur CSV-Dateien verarbeiten
                 input_file = os.path.join(input_folder, file_name)

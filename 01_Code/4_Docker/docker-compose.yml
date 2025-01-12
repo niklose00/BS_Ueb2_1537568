@@ -3,6 +3,9 @@ services:
     build:
       context: ../../
       dockerfile: ./01_Code/4_Docker/sender/Dockerfile
+    working_dir: /app
+    volumes:
+      - ../../02_Outputs:/app/02_Outputs
     networks:
       - latency_test_network
     depends_on:

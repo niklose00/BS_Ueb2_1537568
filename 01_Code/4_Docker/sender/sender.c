@@ -62,10 +62,11 @@ int main()
     printf("95%%-Konfidenzintervall: [%.2f ns, %.2f ns]\n", ci_lower, ci_upper);
 
     // CSV-Datei erstellen
-    write_csv("04_docker_latencies.csv", latencies, ITERATIONS);
+    write_csv("04_docker_latencies.csv", latencies, ITERATIONS, "docker");
 
     zmq_close(socket);
     zmq_ctx_destroy(context);
 
     return 0;
 }
+
